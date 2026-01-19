@@ -1,60 +1,17 @@
 (function () {
     'use strict';
 
+    if (!window.Lampa) return;
+
     var BASE_URL = 'https://sinemaizle.org';
 
-    var plugin = {
-        name: 'Sinemaizle',
-        version: '1.0.0',
-        type: 'online',
-        author: 'custom',
-        description: 'Sinemaizle.org online source'
-    };
-
-    function request(url) {
-        return new Promise(function (resolve, reject) {
-            Lampa.Network.get(url, function (html) {
-                resolve(html);
-            }, function () {
-                reject();
-            });
-        });
+    function request(url, success, error) {
+        Lampa.Network.get(url, success, error);
     }
 
-    function parseList(html) {
-        var items = [];
-        var div = document.createElement('div');
-        div.innerHTML = html;
-
-        div.querySelectorAll('.movie-item, .film, article').forEach(function (el) {
-            var a = el.querySelector('a');
-            var img = el.querySelector('img');
-
-            if (!a) return;
-
-            items.push({
-                title: a.getAttribute('title') || a.textContent.trim(),
-                url: a.href,
-                poster: img ? img.src : '',
-                type: 'movie'
-            });
-        });
-
-        return items;
-    }
-
-    function parsePlayer(html) {
-        var div = document.createElement('div');
-        div.innerHTML = html;
-
-        var iframe = div.querySelector('iframe');
-        if (!iframe) return [];
-
-        return [{
-            title: 'Sinemaizle',
-            url: iframe.src,
-            quality: 'HD'
-        }];
+    function htmlToDom(html) {
+        var parser = new DOMParser();
+        return parser.parseFromString(html, 'text/html');
     }
 
     Lampa.Source.Online.add({
@@ -63,35 +20,53 @@
         type: 'movie',
 
         search: function (query, callback) {
-            request(BASE_URL + '/?s=' + encodeURIComponent(query))
-                .then(function (html) {
-                    callback(parseList(html));
-                })
-                .catch(function () {
-                    callback([]);
-                });
-        },
+            request(BASE_URL + '/?s=' + encodeURIComponent(query), function (html) {
+                var doc = htmlToDom(html);
+                var items = [];
 
-        category: function (category, page, callback) {
-            request(BASE_URL)
-                .then(function (html) {
-                    callback(parseList(html));
-                })
-                .catch(function () {
-                    callback([]);
+                doc.querySelectorAll('article a').forEach(function (a) {
+                    var img = a.querySelector('img');
+                    if (!img) return;
+
+                    items.push({
+                        title: img.alt || a.title,
+                        poster: img.src,
+                        url: a.href,
+                        type: 'movie'
+                    });
                 });
+
+                callback(items);
+            }, function () {
+                callback([]);
+            });
         },
 
         detail: function (url, callback) {
-            request(url)
-                .then(function (html) {
-                    callback(parsePlayer(html));
-                })
-                .catch(function () {
+            request(url, function (html) {
+                var doc = htmlToDom(html);
+                var iframe = doc.querySelector('iframe');
+
+                if (!iframe) {
                     callback([]);
-                });
+                    return;
+                }
+
+                callback([{
+                    title: 'Sinemaizle',
+                    url: iframe.src,
+                    quality: 'HD'
+                }]);
+            }, function () {
+                callback([]);
+            });
         }
     });
 
-    Lampa.Plugin.add(plugin);
+    Lampa.Plugin.add({
+        name: 'Sinemaizle',
+        author: 'custom',
+        version: '1.0'
+    });
+
 })();
