@@ -7,27 +7,37 @@
         var BASE_URL = 'https://sinemaizle.org';
 
         /**
-         * Поиск фильма по названию из карточки Lampa
+         * Поиск фильма и возврат первого найденного фильма
          */
         function searchFilm(object, callback) {
             var title = object.original_title || object.title;
-
             if (!title) return callback([]);
 
-            // Возвращаем объект с URL поиска на sinemaizle
-            var item = {
-                title: title,
-                url: BASE_URL + '/?s=' + encodeURIComponent(title),
-                type: 'movie',
-                quality: 'WEB',
-                external: true  // Открываем во встроенном WebView
-            };
+            Lampa.Network.get(BASE_URL + '/?s=' + encodeURIComponent(title), function (html) {
+                var doc = Lampa.Utils.parseHtml(html);
+                var firstMovie = doc.find('article a').get(0);
 
-            callback([item]);
+                if (!firstMovie) {
+                    callback([]);
+                    return;
+                }
+
+                var item = {
+                    title: firstMovie.title || object.title,
+                    url: firstMovie.href, // ссылка на страницу фильма
+                    type: 'movie',
+                    quality: 'WEB',
+                    external: true
+                };
+
+                callback([item]);
+            }, function () {
+                callback([]);
+            });
         }
 
         /**
-         * Открытие страницы фильма в WebView
+         * Возврат детали фильма для WebView
          */
         function detail(item, callback) {
             callback([{
@@ -35,12 +45,12 @@
                 url: item.url,
                 type: 'movie',
                 quality: 'WEB',
-                external: true  // WebView
+                external: true
             }]);
         }
 
         /**
-         * Регистрация источника в Lampa
+         * Регистрация источника
          */
         Lampa.Source.Online.add({
             id: 'sinemaizle_webview',
@@ -50,9 +60,6 @@
             detail: detail
         });
 
-        /**
-         * Регистрируем плагин
-         */
         Lampa.Plugin.add({
             name: 'Sinemaizle WebView',
             version: '1.0',
