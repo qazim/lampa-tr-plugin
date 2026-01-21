@@ -14,10 +14,12 @@
     
     var last;
     var items = [];
-    var loading_attempts = 0;
+    var html = $('<div></div>');
 
-    this.initialize = function() {
+    this.create = function() {
       var _this = this;
+      
+      this.activity.loader(true);
       
       filter.onSearch = function(value) {
         Lampa.Activity.replace({
@@ -30,10 +32,6 @@
         _this.start();
       };
       
-      filter.render().find('.selector').on('hover:enter', function() {
-        // Остановка таймеров если нужно
-      });
-      
       scroll.body().addClass('torrent-list');
       files.appendFiles(scroll.render());
       files.appendHead(filter.render());
@@ -42,6 +40,8 @@
       Lampa.Controller.enable('content');
       
       this.search();
+      
+      return this.render();
     };
 
     this.search = function() {
@@ -54,7 +54,7 @@
       });
     };
 
-    this.parseResults = function(html) {
+    this.parseResults = function(html_text) {
       var _this = this;
       this.activity.loader(false);
       
@@ -62,17 +62,17 @@
       
       try {
         var parser = new DOMParser();
-        var doc = parser.parseFromString(html, 'text/html');
+        var doc = parser.parseFromString(html_text, 'text/html');
         
         // Адаптируйте селекторы под структуру sinemaizle.org
-        var results = doc.querySelectorAll('article, .movie-item, .film-item, .post');
+        var results = doc.querySelectorAll('article, .movie-item, .film-item, .post, .item');
         
         results.forEach(function(item) {
           try {
             var link = item.querySelector('a');
-            var title_elem = item.querySelector('h2, h3, .title, .entry-title');
+            var title_elem = item.querySelector('h2, h3, .title, .entry-title, h1');
             var img = item.querySelector('img');
-            var year_elem = item.querySelector('.year, .date');
+            var year_elem = item.querySelector('.year, .date, time');
             
             if (link && title_elem) {
               var url = link.href;
@@ -104,12 +104,12 @@
         if (items.length > 0) {
           this.buildResults();
         } else {
-          this.empty();
+          this.empty('Ничего не найдено');
         }
         
       } catch(e) {
         console.log('SinemaIzle parse error:', e);
-        this.empty();
+        this.empty('Ошибка парсинга');
       }
     };
 
@@ -128,9 +128,9 @@
           info: info.join(' • ')
         };
         
-        var html = Lampa.Template.get('online_prestige_folder', data);
+        var item_html = Lampa.Template.get('online_prestige_folder', data);
         
-        var image = html.find('.online-prestige__img');
+        var image = item_html.find('.online-prestige__img');
         if (element.img) {
           var img = $('<img>');
           img.on('load', function() {
@@ -143,16 +143,16 @@
           image.append(img);
         }
         
-        html.on('hover:enter', function() {
+        item_html.on('hover:enter', function() {
           _this.openMovie(element);
         });
         
-        html.on('hover:focus', function(e) {
+        item_html.on('hover:focus', function(e) {
           last = e.target;
           scroll.update($(e.target), true);
         });
         
-        scroll.append(html);
+        scroll.append(item_html);
       });
       
       Lampa.Controller.enable('content');
@@ -161,16 +161,54 @@
     this.openMovie = function(element) {
       var _this = this;
       
-      Lampa.Activity.push({
-        url: element.url,
-        title: element.title,
-        component: 'sinemaizle_player',
-        page: 1,
-        movie: {
-          title: element.title,
-          url: element.url
-        }
+      Lampa.Loading.start(function() {
+        Lampa.Loading.stop();
+        Lampa.Controller.toggle('content');
+        network.clear();
       });
+      
+      network.silent(element.url, function(html_text) {
+        Lampa.Loading.stop();
+        _this.parsePlayer(html_text, element);
+      }, function() {
+        Lampa.Loading.stop();
+        Lampa.Noty.show('Не удалось загрузить видео');
+      }, false, {
+        dataType: 'text'
+      });
+    };
+
+    this.parsePlayer = function(html_text, element) {
+      try {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html_text, 'text/html');
+        
+        // Поиск iframe с видео
+        var iframe = doc.querySelector('iframe[src*="player"], iframe[src*="video"], iframe[src*="embed"]');
+        
+        if (iframe) {
+          var video_url = iframe.src || iframe.getAttribute('data-src');
+          
+          if (video_url) {
+            Lampa.Player.play({
+              title: element.title,
+              url: video_url
+            });
+            
+            Lampa.Player.playlist([{
+              title: element.title,
+              url: video_url
+            }]);
+          } else {
+            Lampa.Noty.show('Видео не найдено');
+          }
+        } else {
+          Lampa.Noty.show('Плеер не найден');
+        }
+      } catch(e) {
+        console.log('SinemaIzle player error:', e);
+        Lampa.Noty.show('Ошибка загрузки плеера');
+      }
     };
 
     this.onError = function() {
@@ -188,95 +226,48 @@
 
     this.start = function() {
       if (Lampa.Activity.active().activity !== this.activity) return;
-      this.initialize();
+      Lampa.Controller.add('content', {
+        toggle: function() {
+          Lampa.Controller.collectionSet(scroll.render(), files.render());
+          Lampa.Controller.collectionFocus(last || false, scroll.render());
+        },
+        left: function() {
+          if (Navigator.canmove('left')) Navigator.move('left');
+          else Lampa.Controller.toggle('menu');
+        },
+        up: function() {
+          if (Navigator.canmove('up')) Navigator.move('up');
+          else Lampa.Controller.toggle('head');
+        },
+        down: function() {
+          Navigator.move('down');
+        },
+        right: function() {
+          if (Navigator.canmove('right')) Navigator.move('right');
+          else filter.show(Lampa.Lang.translate('title_filter'), 'filter');
+        },
+        back: this.back.bind(this)
+      });
+      Lampa.Controller.toggle('content');
     };
 
     this.pause = function() {};
+    
     this.stop = function() {};
+    
     this.render = function() {
       return files.render();
+    };
+    
+    this.back = function() {
+      Lampa.Activity.backward();
     };
     
     this.destroy = function() {
       network.clear();
       files.destroy();
       scroll.destroy();
-    };
-  }
-
-  // Компонент для проигрывателя
-  function playerComponent(object) {
-    var network = new Lampa.Reguest();
-    var scroll = new Lampa.Scroll({
-      mask: true,
-      over: true
-    });
-    
-    this.create = function() {
-      this.activity.loader(true);
-      return this.render();
-    };
-
-    this.search = function() {
-      var _this = this;
-      
-      network.silent(object.movie.url, function(html) {
-        _this.activity.loader(false);
-        _this.parsePlayer(html);
-      }, function() {
-        _this.activity.loader(false);
-        Lampa.Noty.show('Не удалось загрузить видео');
-      }, false, {
-        dataType: 'text'
-      });
-    };
-
-    this.parsePlayer = function(html) {
-      try {
-        var parser = new DOMParser();
-        var doc = parser.parseFromString(html, 'text/html');
-        
-        // Поиск iframe с видео
-        var iframe = doc.querySelector('iframe[src*="player"], iframe[src*="video"], iframe[src*="embed"]');
-        
-        if (iframe) {
-          var video_url = iframe.src || iframe.getAttribute('data-src');
-          
-          if (video_url) {
-            Lampa.Player.play({
-              title: object.movie.title,
-              url: video_url
-            });
-            
-            Lampa.Player.playlist([{
-              title: object.movie.title,
-              url: video_url
-            }]);
-          } else {
-            Lampa.Noty.show('Видео не найдено');
-          }
-        } else {
-          Lampa.Noty.show('Плеер не найден');
-        }
-      } catch(e) {
-        console.log('SinemaIzle player error:', e);
-        Lampa.Noty.show('Ошибка загрузки плеера');
-      }
-    };
-
-    this.start = function() {
-      this.search();
-    };
-
-    this.pause = function() {};
-    this.stop = function() {};
-    this.render = function() {
-      return scroll.render();
-    };
-    
-    this.destroy = function() {
-      network.clear();
-      scroll.destroy();
+      html.remove();
     };
   }
 
@@ -285,7 +276,7 @@
     
     var manifest = {
       type: 'video',
-      version: '1.0.0',
+      version: '1.0.1',
       name: 'SinemaIzle',
       description: 'Онлайн просмотр с sinemaizle.org',
       component: 'sinemaizle'
@@ -304,7 +295,7 @@
         .online-prestige__folder{padding:1em;flex-shrink:0}
         .online-prestige__folder>svg{width:4.4em !important;height:4.4em !important}
         .online-prestige__title{font-size:1.7em;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
-        .online-prestige__info{display:flex;align-items:center;margin-top:0.5em}
+        .online-prestige__info{display:flex;align-items:center;margin-top:0.5em;opacity:0.7}
         .online-prestige.focus::after{content:'';position:absolute;top:-0.6em;left:-0.6em;right:-0.6em;bottom:-0.6em;border-radius:.7em;border:solid .3em #fff;z-index:-1}
         .online-prestige+.online-prestige{margin-top:1.5em}
       </style>
@@ -328,13 +319,12 @@
       </div>
     `);
 
-    // Регистрируем компоненты
+    // Регистрируем компонент
     Lampa.Component.add('sinemaizle', component);
-    Lampa.Component.add('sinemaizle_player', playerComponent);
 
     // Добавляем кнопку в карточку фильма
     var button = `
-      <div class="full-start__button selector view--sinemaizle" data-subtitle="SinemaIzle v1.0.0">
+      <div class="full-start__button selector view--sinemaizle" data-subtitle="SinemaIzle v1.0.1">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z"/>
         </svg>
