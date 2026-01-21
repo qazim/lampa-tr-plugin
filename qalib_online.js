@@ -4062,6 +4062,24 @@
       }
     }
 
+function sinemaizle(component, object) {
+    this.search = function (_object) {
+        var title = _object.search || (_object.movie && _object.movie.title);
+        if (!title) return component.empty();
+
+        component.reset();
+        component.append({
+            title: 'Sinemaizle.org',
+            quality: 'WEB',
+            info: 'TR',
+            stream: 'https://sinemaizle.org/?s=' + encodeURIComponent(title),
+            external: true
+        });
+        component.start(true);
+    };
+    this.destroy = function () {};
+}
+
     function filmix(component, _object, _debug) {
       var network = new Lampa.Reguest();
       var extract = {};
@@ -11893,6 +11911,14 @@
         kp: false,
         imdb: true,
         disabled: this.isDebug3()
+      },{
+        name: 'sinameizle',
+        title: 'Sinameizle (Ads)',
+        source: new sinameizle(this, object),
+        search: true,
+        kp: false,
+        imdb: false,
+        disabled:this.isDebug3()
       }, {
         name: 'rezka2',
         title: 'HDrezka',
