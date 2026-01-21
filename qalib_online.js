@@ -11912,9 +11912,9 @@ function sinemaizle(component, object) {
         imdb: true,
         disabled: this.isDebug3()
       },{
-        name: 'sinameizle',
-        title: 'Sinameizle (Ads)',
-        source: new sinameizle(this, object),
+        name: 'sinamaizle',
+        title: 'Sinamaizle (Ads)',
+        source: new sinamaizle(this, object),
         search: true,
         kp: false,
         imdb: false,
