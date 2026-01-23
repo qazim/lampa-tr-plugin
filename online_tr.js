@@ -93,6 +93,7 @@
             'article',
             '.post',
             '.movie-item',
+			'move_k',
             '.film-item',
             '[class*="move_k"]',
             '[class*="gallery"]',
