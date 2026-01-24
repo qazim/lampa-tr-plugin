@@ -2,7 +2,15 @@
   'use strict';
 
   var BASE_URL = 'https://sinemaizle.org';
-  var PROXY_URL = 'https://api.allorigins.win/raw?url=';
+  
+  // Список прокси серверов (пробуем по очереди)
+  var PROXIES = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/raw?url=',
+    'https://cors-anywhere.herokuapp.com/'
+  ];
+  
+  var current_proxy = 0;
 
   function component(object) {
     var network = new Lampa.Reguest();
@@ -51,23 +59,48 @@
       
       var search_query = encodeURIComponent(object.search || object.movie.title);
       var search_url = BASE_URL + '/arama?s=' + search_query;
-      var proxy_url = PROXY_URL + encodeURIComponent(search_url);
       
       console.log('SinemaIzle: Searching for:', object.search || object.movie.title);
       console.log('SinemaIzle: Search URL:', search_url);
       
-      network.clear();
-      network.timeout(20000);
-      
-      network.native(proxy_url, function(html_text) {
+      this.fetchWithProxy(search_url, function(html_text) {
         console.log('SinemaIzle: Response received, length:', html_text.length);
         _this.parseResults(html_text);
       }, function(error) {
         console.log('SinemaIzle: Network error:', error);
         _this.onError();
-      }, false, {
-        dataType: 'text'
       });
+    };
+    
+    this.fetchWithProxy = function(url, success, error) {
+      var _this = this;
+      var proxy_tried = 0;
+      
+      function tryProxy() {
+        if (proxy_tried >= PROXIES.length) {
+          console.log('SinemaIzle: All proxies failed');
+          error('All proxies failed');
+          return;
+        }
+        
+        var proxy = PROXIES[proxy_tried];
+        var proxy_url = proxy + encodeURIComponent(url);
+        
+        console.log('SinemaIzle: Trying proxy', proxy_tried + 1, '/', PROXIES.length, ':', proxy);
+        
+        network.clear();
+        network.timeout(30000); // 30 секунд
+        
+        network.native(proxy_url, success, function(e) {
+          console.log('SinemaIzle: Proxy', proxy_tried + 1, 'failed:', e);
+          proxy_tried++;
+          tryProxy();
+        }, false, {
+          dataType: 'text'
+        });
+      }
+      
+      tryProxy();
     };
 
     this.parseResults = function(html_text) {
@@ -234,20 +267,13 @@
         network.clear();
       });
       
-      var proxy_url = PROXY_URL + encodeURIComponent(element.url);
-      
-      network.clear();
-      network.timeout(20000);
-      
-      network.native(proxy_url, function(html_text) {
+      this.fetchWithProxy(element.url, function(html_text) {
         Lampa.Loading.stop();
         console.log('SinemaIzle: Movie page loaded, size:', html_text.length);
         _this.parsePlayer(html_text, element);
       }, function() {
         Lampa.Loading.stop();
         Lampa.Noty.show('Не удалось загрузить страницу фильма');
-      }, false, {
-        dataType: 'text'
       });
     };
 
@@ -258,27 +284,23 @@
         var parser = new DOMParser();
         var doc = parser.parseFromString(html_text, 'text/html');
         
-        // Ищем все iframe
+        // Ищем iframe плеера
         var iframes = doc.querySelectorAll('iframe');
         console.log('SinemaIzle: Found iframes:', iframes.length);
         
         var player_iframe = null;
         
-        // Ищем iframe плеера
         for (var i = 0; i < iframes.length; i++) {
           var iframe = iframes[i];
-          var src = iframe.src || iframe.getAttribute('data-src') || iframe.getAttribute('data-lazy-src');
+          var src = iframe.src || iframe.getAttribute('data-src');
           
           if (src) {
             console.log('SinemaIzle: Iframe #' + i + ' src:', src);
             
-            // Пропускаем явно рекламные
             var isAd = src.indexOf('doubleclick') !== -1 ||
-                      src.indexOf('googlesyndication') !== -1 ||
-                      src.indexOf('adnxs') !== -1;
+                      src.indexOf('googlesyndication') !== -1;
             
             if (!isAd) {
-              // Исправляем относительные URL
               if (!src.startsWith('http')) {
                 if (src.startsWith('//')) {
                   src = 'https:' + src;
@@ -294,8 +316,20 @@
         }
         
         if (player_iframe) {
-          console.log('SinemaIzle: Loading player iframe:', player_iframe);
-          this.loadPlayerFrame(player_iframe, element);
+          console.log('SinemaIzle: Opening iframe player:', player_iframe);
+          
+          // Открываем iframe напрямую в плеере
+          Lampa.Player.play({
+            title: element.title,
+            url: player_iframe
+          });
+          
+          Lampa.Player.playlist([{
+            title: element.title,
+            url: player_iframe
+          }]);
+          
+          Lampa.Noty.show('Нажмите кнопки на видео чтобы пропустить рекламу');
         } else {
           console.log('SinemaIzle: No player iframe found');
           Lampa.Noty.show('Плеер не найден');
@@ -312,19 +346,12 @@
       
       console.log('SinemaIzle: Fetching player page:', iframe_url);
       
-      var proxy_url = PROXY_URL + encodeURIComponent(iframe_url);
-      
-      network.clear();
-      network.timeout(20000);
-      
-      network.native(proxy_url, function(html_text) {
+      this.fetchWithProxy(iframe_url, function(html_text) {
         console.log('SinemaIzle: Player page loaded, size:', html_text.length);
         _this.extractVideoUrl(html_text, element);
       }, function() {
         console.log('SinemaIzle: Failed to load player page');
         Lampa.Noty.show('Не удалось загрузить плеер');
-      }, false, {
-        dataType: 'text'
       });
     };
 
@@ -491,7 +518,7 @@
     
     var manifest = {
       type: 'video',
-      version: '1.0.5',
+      version: '1.0.7',
       name: 'SinemaIzle',
       description: 'Онлайн просмотр с sinemaizle.org',
       component: 'sinemaizle'
@@ -535,7 +562,7 @@
     Lampa.Component.add('sinemaizle', component);
 
     var button = `
-      <div class="full-start__button selector view--sinemaizle" data-subtitle="SinemaIzle v1.0.5">
+      <div class="full-start__button selector view--sinemaizle" data-subtitle="SinemaIzle v1.0.6">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 5v14l11-7z"/>
         </svg>
