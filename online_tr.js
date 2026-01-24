@@ -330,101 +330,61 @@
     };
 
     this.showIframePlayer = function(iframe_url, element) {
-      // Создаём полноэкранный iframe
-      var player_html = `
-        <!DOCTYPE html>
-        <html style="margin:0;padding:0;height:100%;overflow:hidden;">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>${element.title}</title>
-          <style>
-            * { margin: 0; padding: 0; }
-            body { 
-              background: #000; 
-              height: 100vh; 
-              overflow: hidden;
-              display: flex;
-              flex-direction: column;
-            }
-            .header {
-              background: rgba(0,0,0,0.8);
-              color: white;
-              padding: 15px;
-              font-family: Arial, sans-serif;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            }
-            .close-btn {
-              background: #e74c3c;
-              color: white;
-              border: none;
-              padding: 10px 20px;
-              border-radius: 5px;
-              cursor: pointer;
-              font-size: 14px;
-            }
-            .close-btn:hover {
-              background: #c0392b;
-            }
-            iframe {
-              border: none;
-              width: 100%;
-              flex: 1;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <strong>${element.title}</strong>
-              <br>
-              <small style="opacity: 0.7;">Нажмите кнопки на видео чтобы пропустить рекламу</small>
-            </div>
-            <button class="close-btn" onclick="window.close()">✕ Закрыть</button>
-          </div>
-          <iframe src="${iframe_url}" allowfullscreen allow="autoplay; fullscreen"></iframe>
-        </body>
-        </html>
-      `;
+      console.log('SinemaIzle: Showing player for URL:', iframe_url);
       
-      // Открываем в новом окне
-      var newWindow = window.open('', '_blank', 'width=1280,height=720');
-      if (newWindow) {
-        newWindow.document.write(player_html);
-        newWindow.document.close();
-        Lampa.Noty.show('Плеер открыт в новом окне');
-      } else {
-        // Если попап заблокирован, показываем уведомление
-        Lampa.Select.show({
-          title: 'Открыть плеер',
-          items: [
-            {
-              title: 'Открыть в новой вкладке',
-              url: iframe_url
-            },
-            {
-              title: 'Скопировать ссылку',
-              copy: iframe_url
-            }
-          ],
-          onSelect: function(item) {
-            if (item.url) {
-              window.open(item.url, '_blank');
-            } else if (item.copy) {
-              if (navigator.clipboard) {
-                navigator.clipboard.writeText(item.copy);
-                Lampa.Noty.show('Ссылка скопирована');
-              }
-            }
-            Lampa.Controller.toggle('content');
+      var _this = this;
+      
+      // Показываем меню с опциями
+      Lampa.Select.show({
+        title: element.title,
+        items: [
+          {
+            title: '▶️ Открыть плеер в новой вкладке',
+            subtitle: 'Рекомендуется',
+            url: iframe_url
           },
-          onBack: function() {
-            Lampa.Controller.toggle('content');
+          {
+            title: '🔗 Скопировать ссылку на плеер',
+            copy: iframe_url
+          },
+          {
+            title: '🌐 Открыть страницу фильма',
+            page: element.url
           }
-        });
-      }
+        ],
+        onSelect: function(item) {
+          if (item.url) {
+            console.log('SinemaIzle: Opening URL:', item.url);
+            var opened = window.open(item.url, '_blank');
+            if (!opened) {
+              Lampa.Noty.show('⚠️ Разрешите всплывающие окна в браузере');
+            } else {
+              Lampa.Noty.show('✅ Плеер открыт в новой вкладке');
+            }
+          } else if (item.copy) {
+            // Копируем в буфер
+            var textarea = document.createElement('textarea');
+            textarea.value = item.copy;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+              document.execCommand('copy');
+              Lampa.Noty.show('✅ Ссылка скопирована');
+            } catch(e) {
+              Lampa.Noty.show('❌ Не удалось скопировать');
+            }
+            document.body.removeChild(textarea);
+          } else if (item.page) {
+            window.open(item.page, '_blank');
+          }
+          Lampa.Controller.toggle('content');
+        },
+        onBack: function() {
+          Lampa.Controller.toggle('content');
+        }
+      });
     };
 
     this.loadPlayerFrame = function(iframe_url, element) {
@@ -604,7 +564,7 @@
     
     var manifest = {
       type: 'video',
-      version: '1.0.8',
+      version: '1.0.9',
       name: 'SinemaIzle',
       description: 'Онлайн просмотр с sinemaizle.org',
       component: 'sinemaizle'
