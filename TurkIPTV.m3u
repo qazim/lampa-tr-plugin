@@ -171,5 +171,5 @@ https://turkhls.persiana.live/hls/stream.m3u8
 http://canbroadcast.com:7000/canlican/tv.m3u8
 #EXTINF:-1 tvg-id="SAT7TURK.tr" tvg-logo="https://i.imgur.com/cKQIK4i.png" group-title="Yurt Disi",Sat 7 Turk
 https://live.artidijitalmedya.com/artidijital_sat7turk/sat7turk/playlist.m3u8
-#EXTINF:-1, PLAY TV
+#EXTINF:-1 group-title="Eglence", PLAY TV
 https://ip100.radyotelekomtv.com:3784/stream/play.m3u8
